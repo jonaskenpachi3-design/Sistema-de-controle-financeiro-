@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<link rel="stylesheet" href="Untitled-1.css">
+<script defer src="Untitled-2.js"></script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de finaças</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{
+    --primary:#0f172a;
+    --secondary:#1e293b;
+    --success:#22c55e;
+    --danger:#ef4444;
+    --info:#3b82f6;
+    --bg:#f1f5f9;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;font-family:Segoe UI;}
+
+body{background:var(--bg);}
+
+.center{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.card{
+    background:white;
+    padding:25px;
+    border-radius:10px;
+    box-shadow:0 5px 15px rgba(0,0,0,0.1);
+    margin-bottom:20px;
+}
+
+input{
+    width:100%;
+    padding:8px;
+    margin:8px 0;
+    border:1px solid #ccc;
+    border-radius:5px;
+}
+
+button{
+    padding:8px;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+    color:white;
+}
+
+.success{background:var(--success);}
+.danger{background:var(--danger);}
+.info{background:var(--info);}
+
+.hidden{display:none;}
+
+.sidebar{
+    width:220px;
+    height:100vh;
+    background:var(--primary);
+    color:white;
+    position:fixed;
+    padding:20px;
+}
+
+.sidebar button{
+    background:var(--secondary);
+    width:100%;
+    margin:5px 0;
+}
+
+.content{
+    margin-left:240px;
+    padding:30px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+}
+
+th,td{
+    padding:8px;
+    border-bottom:1px solid #ddd;
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen" class="center">
+    <div class="card" style="width:300px">
+        <h2>Login</h2>
+        <input type="text" id="user" placeholder="Usuário">
+        <input type="password" id="pass" placeholder="Senha">
+        <button class="info" onclick="login()">Entrar</button>
+        <button class="success" onclick="register()">Cadastrar</button>
+    </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+<div class="sidebar">
+    <h2>💰 Finanças</h2>
+    <button onclick="mostrarTela('dashboard')">Dashboard</button>
+    <button onclick="mostrarTela('ganhos')">Ganhos</button>
+    <button onclick="mostrarTela('despesas')">Despesas</button>
+    <button class="danger" onclick="logout()">Sair</button>
+</div>
+
+<div class="content">
+
+<div id="dashboard" class="tela">
+    <h2>Resumo</h2>
+
+    <div class="card">
+        <label>Data Inicial</label>
+        <input type="date" id="dataInicio">
+        <label>Data Final</label>
+        <input type="date" id="dataFim">
+        <button class="info" onclick="aplicarFiltro()">Aplicar Filtro</button>
+    </div>
+
+    <div class="card">
+        <p><strong>Ganhos:</strong> <span id="totalGanhos"></span></p>
+        <p><strong>Despesas:</strong> <span id="totalDespesas"></span></p>
+        <p><strong>Saldo:</strong> <span id="saldo"></span></p>
+    </div>
+
+    <div class="card" style="height:400px;">
+    <canvas id="grafico"></canvas>
+</div>
+
+</div>
+
+<div id="ganhos" class="tela hidden">
+    <h2>Novo Ganho</h2>
+    <input type="text" id="descGanho" placeholder="Descrição">
+    <input type="number" id="valorGanho" placeholder="Valor">
+    <input type="date" id="dataGanho">
+    <button class="success" onclick="addGanho()">Adicionar</button>
+    <table id="listaGanhos"></table>
+</div>
+
+<div id="despesas" class="tela hidden">
+    <h2>Nova Despesa</h2>
+    <input type="text" id="descDespesa" placeholder="Descrição">
+    <input type="number" id="valorDespesa" placeholder="Valor">
+    <input type="date" id="dataDespesa">
+    <button class="danger" onclick="addDespesa()">Adicionar</button>
+    <table id="listaDespesas"></table>
+</div>
+
+</div>
+</div>
+
+<script>
+let usuarioLogado=null;
+let ganhos=[],despesas=[];
+let grafico;
+
+async function hashSenha(senha){
+    const encoder=new TextEncoder();
+    const data=encoder.encode(senha);
+    const hash=await crypto.subtle.digest("SHA-256",data);
+    return Array.from(new Uint8Array(hash))
+        .map(b=>b.toString(16).padStart(2,"0"))
+        .join("");
+}
+
+async function register(){
+    if(!user.value || !pass.value){
+        alert("Preencha todos os campos");
+        return;
+    }
+
+    if(localStorage.getItem("user_"+user.value)){
+        alert("Usuário já existe!");
+        return;
+    }
+
+    const senhaHash=await hashSenha(pass.value);
+    localStorage.setItem("user_"+user.value,senhaHash);
+
+    alert("Usuário cadastrado com sucesso!");
+    user.value="";
+    pass.value="";
+}
+
+async function login(){
+    const senhaHash=await hashSenha(pass.value);
+    const salva=localStorage.getItem("user_"+user.value);
+
+    if(salva===senhaHash){
+        usuarioLogado=user.value;
+        carregarDados();
+        loginScreen.classList.add("hidden");
+        app.classList.remove("hidden");
+        atualizarTudo();
+    }else alert("Login inválido");
+}
+
+function logout(){
+    usuarioLogado=null;
+    app.classList.add("hidden");
+    loginScreen.classList.remove("hidden");
+}
+
+function salvarDados(){
+    localStorage.setItem(usuarioLogado+"_ganhos",JSON.stringify(ganhos));
+    localStorage.setItem(usuarioLogado+"_despesas",JSON.stringify(despesas));
+}
+
+function carregarDados(){
+    ganhos=JSON.parse(localStorage.getItem(usuarioLogado+"_ganhos"))||[];
+    despesas=JSON.parse(localStorage.getItem(usuarioLogado+"_despesas"))||[];
+}
+
+function mostrarTela(id){
+    document.querySelectorAll(".tela").forEach(t=>t.classList.add("hidden"));
+    document.getElementById(id).classList.remove("hidden");
+}
+
+function addGanho(){
+
+    // ✅ VALIDAÇÃO ANTES DO MODAL
+    if(!descGanho.value || !valorGanho.value || !dataGanho.value){
+        mostrarToast("Preencha todos os campos!", "danger");
+        return;
+    }
+
+    if(+valorGanho.value <= 0){
+        mostrarToast("Valor inválido!", "danger");
+        return;
+    }
+
+    abrirModal("Confirmar adição do ganho?", function(){
+
+        ganhos.push({
+            desc: descGanho.value,
+            valor: +valorGanho.value,
+            data: dataGanho.value
+        });
+
+        salvarDados();
+        atualizarTudo();
+
+        mostrarToast("Ganho adicionado com sucesso!", "success");
+
+        descGanho.value="";
+        valorGanho.value="";
+        dataGanho.value="";
+    });
+}
+
+function addDespesa(){
+
+    // ✅ VALIDAÇÃO
+    if(!descDespesa.value || !valorDespesa.value || !dataDespesa.value){
+        mostrarToast("Preencha todos os campos!", "danger");
+        return;
+    }
+
+    if(+valorDespesa.value <= 0){
+        mostrarToast("Valor inválido!", "danger");
+        return;
+    }
+
+    abrirModal("Confirmar adição da despesa?", function(){
+
+        despesas.push({
+            desc: descDespesa.value,
+            valor: +valorDespesa.value,
+            data: dataDespesa.value
+        });
+
+        salvarDados();
+        atualizarTudo();
+
+        mostrarToast("Despesa adicionada com sucesso!", "danger");
+
+        descDespesa.value="";
+        valorDespesa.value="";
+        dataDespesa.value="";
+    });
+}
+
+function deletar(tipo,index){
+
+    abrirModal("Deseja apagar este registro?", function(){
+
+        if(tipo === "ganho"){
+            ganhos.splice(index,1);
+        } else {
+            despesas.splice(index,1);
+        }
+
+        salvarDados();
+        atualizarTudo();
+
+    });
+}
+
+function aplicarFiltro(){
+    atualizarDashboard();
+}
+
+function atualizarTudo(){
+    atualizarTabelas();
+    atualizarDashboard();
+}
+
+function atualizarDashboard(){
+    let inicio=dataInicio.value;
+    let fim=dataFim.value;
+
+    let gFiltrados=ganhos.filter(g=>{
+        if(!inicio||!fim) return true;
+        return g.data>=inicio && g.data<=fim;
+    });
+
+    let dFiltrados=despesas.filter(d=>{
+        if(!inicio||!fim) return true;
+        return d.data>=inicio && d.data<=fim;
+    });
+
+    let totalG=gFiltrados.reduce((a,b)=>a+b.valor,0);
+    let totalD=dFiltrados.reduce((a,b)=>a+b.valor,0);
+
+    totalGanhos.innerText="R$ "+totalG.toFixed(2);
+    totalDespesas.innerText="R$ "+totalD.toFixed(2);
+    saldo.innerText = (totalG - totalD).toLocaleString("pt-BR", { 
+    style: "currency", 
+    currency: "BRL" 
+});
+
+
+let valorSaldo = totalG - totalD;
+
+if(valorSaldo >= 0){
+    saldo.style.color = "green";
+}else{
+    saldo.style.color = "red";
+}
+
+if (grafico) grafico.destroy();
+
+const ctx = document.getElementById("grafico").getContext("2d");
+
+const gradienteGanho = ctx.createLinearGradient(0, 0, 0, 400);
+gradienteGanho.addColorStop(0, "#22c55e");
+gradienteGanho.addColorStop(1, "rgba(34,197,94,0.2)");
+
+const gradienteDespesa = ctx.createLinearGradient(0, 0, 0, 400);
+gradienteDespesa.addColorStop(0, "#ef4444");
+gradienteDespesa.addColorStop(1, "rgba(239,68,68,0.2)");
+
+let saldoFinal = totalG - totalD;
+
+grafico = new Chart(ctx, {
+    type: "bar",
+    data: {
+        labels: ["Ganhos", "Despesas"],
+        datasets: [
+            {
+                label: "Valores",
+                data: [totalG, totalD],
+                backgroundColor: [gradienteGanho, gradienteDespesa],
+                borderRadius: 12,
+                borderWidth: 0,
+                barThickness: 70
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+            duration: 1000,
+            easing: "easeOutQuart"
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                backgroundColor: "#0f172a",
+                padding: 12,
+                callbacks: {
+                    label: function(context) {
+                        return context.raw.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL"
+                        });
+                    }
+                }
+            },
+            title: {
+                display: true,
+                text: `Saldo atual: ${saldoFinal.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL"
+                })}`,
+                font: {
+                    size: 18,
+                    weight: "bold"
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return value.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL"
+                        });
+                    }
+                },
+                grid: {
+                    color: "rgba(0,0,0,0.05)"
+                }
+            },
+            x: {
+                grid: {
+                    display: false
+                }
+            }
+        }
+    }
+});
+}
+
+function escapeHTML(text) {
+    return text.replace(/[&<>"']/g, function(m) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[m];
+    });
+}
+
+function atualizarTabelas(){
+    listaGanhos.innerHTML="<tr><th>Desc</th><th>Valor</th><th>Data</th><th></th></tr>";
+    ganhos.forEach((g,i)=>{
+        listaGanhos.innerHTML+=`
+        <tr>
+        <td>${escapeHTML(g.desc)}</td>
+        <td>${g.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</td>
+        <td>${g.data}</td>
+        <td><button class="danger" onclick="deletar('ganho',${i})">🗑</button></td>
+        </tr>`;
+    });
+
+    listaDespesas.innerHTML="<tr><th>Desc</th><th>Valor</th><th>Data</th><th></th></tr>";
+    despesas.forEach((d,i)=>{
+        listaDespesas.innerHTML+=`
+        <tr>
+        <td>${escapeHTML(d.desc)}</td>
+        <td>${d.valor.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</td>
+        <td>${d.data}</td>
+        <td><button class="danger" onclick="deletar('despesa',${i})">🗑</button></td>
+        </tr>`;
+    });
+}
+
+let acaoConfirmada = null;
+
+function abrirModal(mensagem, callback){
+    document.getElementById("modalTexto").innerText = mensagem;
+    document.getElementById("modalConfirm").classList.add("show");
+
+    acaoConfirmada = callback;
+}
+
+function fecharModal(){
+    const modal = document.getElementById("modalConfirm");
+
+    modal.classList.remove("show");
+
+    setTimeout(function(){
+        acaoConfirmada = null;
+    }, 300); // tempo igual ao transition
+}
+
+
+document.addEventListener("DOMContentLoaded", function(){
+    document.getElementById("btnConfirmar").onclick = function(){
+        if(acaoConfirmada){
+            acaoConfirmada();
+        }
+        fecharModal();
+    }
+});
+
+function mostrarToast(mensagem, tipo="info") {
+
+    const toast = document.getElementById("toast");
+
+    toast.textContent = mensagem;
+
+    toast.className = "toast"; // limpa classes anteriores
+    toast.classList.add(tipo);
+    toast.classList.add("show");
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, 3000);
+}
+
+</script>
+
+<!-- MODAL CONFIRMAÇÃO -->
+<div id="modalConfirm" class="modal">
+    <div class="modal-box">
+        <h3 id="modalTexto"></h3>
+        <div class="modal-buttons">
+            <button class="danger" onclick="fecharModal()">Cancelar</button>
+            <button class="success" id="btnConfirmar">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+</body>
+</html>
